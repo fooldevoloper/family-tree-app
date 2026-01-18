@@ -1,0 +1,154 @@
+"use client";
+
+import { useFamilyTree } from "@/lib/family-tree-context";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  UserPlus,
+  Link2,
+  Download,
+  Upload,
+  Undo2,
+  Redo2,
+} from "lucide-react";
+
+interface EditorSidebarProps {
+  onAddPerson: () => void;
+  onAddRelationship: () => void;
+}
+
+export function EditorSidebar({
+  onAddPerson,
+  onAddRelationship,
+}: EditorSidebarProps) {
+  const { currentTree, undo, redo, canUndo, canRedo, updateTree } = useFamilyTree();
+
+  const handleExport = () => {
+    if (!currentTree) return;
+    const dataStr = JSON.stringify(currentTree, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentTree.name.replace(/\s+/g, "-").toLowerCase()}-family-tree.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.members && data.relationships && currentTree) {
+          updateTree({
+            ...currentTree,
+            members: data.members,
+            relationships: data.relationships,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to import tree:", error);
+      }
+    };
+    input.click();
+  };
+
+  return (
+    <aside className="w-56 border-r border-border bg-sidebar p-4 flex flex-col gap-2 shrink-0">
+      <div className="mb-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Add
+        </p>
+        <div className="space-y-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={onAddPerson}
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={onAddRelationship}
+          >
+            <Link2 className="w-4 h-4" />
+            Add Relationship
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="mt-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Data
+        </p>
+        <div className="space-y-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={handleExport}
+          >
+            <Download className="w-4 h-4" />
+            Export JSON
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={handleImport}
+          >
+            <Upload className="w-4 h-4" />
+            Import JSON
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="mt-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          History
+        </p>
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-1 bg-transparent"
+            onClick={undo}
+            disabled={!canUndo}
+          >
+            <Undo2 className="w-4 h-4" />
+            Undo
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-1 bg-transparent"
+            onClick={redo}
+            disabled={!canRedo}
+          >
+            <Redo2 className="w-4 h-4" />
+            Redo
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-auto pt-4 border-t border-border">
+        <div className="text-xs text-muted-foreground">
+          <p>{currentTree?.members.length || 0} members</p>
+          <p>{currentTree?.relationships.length || 0} relationships</p>
+        </div>
+      </div>
+    </aside>
+  );
+}
