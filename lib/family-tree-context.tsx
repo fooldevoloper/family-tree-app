@@ -5,9 +5,16 @@ import {
   useContext,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import type { FamilyTree, Person, Relationship } from "./types";
+
+export interface RelationshipInput {
+  personAId?: string;
+  personBId?: string;
+  type: Relationship["type"];
+}
 
 interface FamilyTreeContextType {
   trees: FamilyTree[];
@@ -17,6 +24,10 @@ interface FamilyTreeContextType {
   deleteTree: (id: string) => void;
   updateTree: (tree: FamilyTree) => void;
   addMember: (member: Omit<Person, "id">) => Person;
+  addMemberWithRelationships: (
+    member: Omit<Person, "id">,
+    relationships?: RelationshipInput[]
+  ) => Person;
   updateMember: (member: Person) => void;
   deleteMember: (id: string) => void;
   addRelationship: (relationship: Omit<Relationship, "id">) => Relationship;
@@ -39,15 +50,37 @@ function generateId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
+function sanitizeTree(tree: FamilyTree): FamilyTree {
+  const memberIdSet = new Set(tree.members.map((m) => m.id));
+  const validRelationships = tree.relationships.filter(
+    (r) => memberIdSet.has(r.personAId) && memberIdSet.has(r.personBId)
+  );
+  return {
+    ...tree,
+    relationships: validRelationships,
+  };
+}
+
 function loadTrees(): FamilyTree[] {
   if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored ? JSON.parse(stored) : [];
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return [];
+    const parsed: FamilyTree[] = JSON.parse(stored);
+    return parsed.map(sanitizeTree);
+  } catch (e) {
+    console.error("Failed to load family trees from localStorage:", e);
+    return [];
+  }
 }
 
 function saveTrees(trees: FamilyTree[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(trees));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trees));
+  } catch (e) {
+    console.error("Failed to save family trees to localStorage:", e);
+  }
 }
 
 export function FamilyTreeProvider({ children }: { children: ReactNode }) {
@@ -57,29 +90,30 @@ export function FamilyTreeProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<FamilyTree[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  const pushHistory = useCallback((tree: FamilyTree) => {
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      return [...newHistory, JSON.parse(JSON.stringify(tree))];
-    });
-    setHistoryIndex((prev) => prev + 1);
-  }, [historyIndex]);
+  const treesRef = useRef<FamilyTree[]>(trees);
+  treesRef.current = trees;
+
+  const currentTreeRef = useRef<FamilyTree | null>(currentTree);
+  currentTreeRef.current = currentTree;
+
+  const historyIndexRef = useRef<number>(historyIndex);
+  historyIndexRef.current = historyIndex;
 
   const setCurrentTree = useCallback((tree: FamilyTree | null) => {
-    setCurrentTreeState(tree);
-    if (tree) {
-      setHistory([JSON.parse(JSON.stringify(tree))]);
+    const sanitized = tree ? sanitizeTree(tree) : null;
+    currentTreeRef.current = sanitized;
+    setCurrentTreeState(sanitized);
+    if (sanitized) {
+      const clone = JSON.parse(JSON.stringify(sanitized));
+      setHistory([clone]);
+      historyIndexRef.current = 0;
       setHistoryIndex(0);
     } else {
       setHistory([]);
+      historyIndexRef.current = -1;
       setHistoryIndex(-1);
     }
     setSelectedMemberId(null);
-  }, []);
-
-  const updateTrees = useCallback((updatedTrees: FamilyTree[]) => {
-    setTrees(updatedTrees);
-    saveTrees(updatedTrees);
   }, []);
 
   const createTree = useCallback((name: string): FamilyTree => {
@@ -91,113 +125,270 @@ export function FamilyTreeProvider({ children }: { children: ReactNode }) {
       members: [],
       relationships: [],
     };
-    const updatedTrees = [...trees, newTree];
-    updateTrees(updatedTrees);
+    setTrees((prev) => {
+      const updated = [...prev, newTree];
+      treesRef.current = updated;
+      saveTrees(updated);
+      return updated;
+    });
     return newTree;
-  }, [trees, updateTrees]);
+  }, []);
 
-  const deleteTree = useCallback((id: string) => {
-    const updatedTrees = trees.filter((t) => t.id !== id);
-    updateTrees(updatedTrees);
-    if (currentTree?.id === id) {
-      setCurrentTree(null);
-    }
-  }, [trees, currentTree, updateTrees, setCurrentTree]);
+  const deleteTree = useCallback(
+    (id: string) => {
+      setTrees((prev) => {
+        const updated = prev.filter((t) => t.id !== id);
+        treesRef.current = updated;
+        saveTrees(updated);
+        return updated;
+      });
+      if (currentTreeRef.current?.id === id) {
+        setCurrentTree(null);
+      }
+    },
+    [setCurrentTree]
+  );
 
   const updateTree = useCallback((tree: FamilyTree) => {
-    const updated = { ...tree, updatedAt: new Date().toISOString() };
-    const updatedTrees = trees.map((t) => (t.id === tree.id ? updated : t));
-    updateTrees(updatedTrees);
-    setCurrentTreeState(updated);
-    pushHistory(updated);
-  }, [trees, updateTrees, pushHistory]);
+    const sanitized = sanitizeTree(tree);
+    const updated: FamilyTree = { ...sanitized, updatedAt: new Date().toISOString() };
 
-  const addMember = useCallback((member: Omit<Person, "id">): Person => {
-    if (!currentTree) throw new Error("No tree selected");
-    const newMember: Person = { ...member, id: generateId() };
-    const updated = {
-      ...currentTree,
-      members: [...currentTree.members, newMember],
-    };
-    updateTree(updated);
-    return newMember;
-  }, [currentTree, updateTree]);
+    // Only update active currentTree and history if this tree is currently open
+    if (currentTreeRef.current && currentTreeRef.current.id === updated.id) {
+      currentTreeRef.current = updated;
+      setCurrentTreeState(updated);
 
-  const updateMember = useCallback((member: Person) => {
-    if (!currentTree) return;
-    const updated = {
-      ...currentTree,
-      members: currentTree.members.map((m) =>
-        m.id === member.id ? member : m
-      ),
-    };
-    updateTree(updated);
-  }, [currentTree, updateTree]);
-
-  const deleteMember = useCallback((id: string) => {
-    if (!currentTree) return;
-    const updated = {
-      ...currentTree,
-      members: currentTree.members.filter((m) => m.id !== id),
-      relationships: currentTree.relationships.filter(
-        (r) => r.personAId !== id && r.personBId !== id
-      ),
-    };
-    updateTree(updated);
-    if (selectedMemberId === id) {
-      setSelectedMemberId(null);
+      setHistory((prev) => {
+        const currentIdx = historyIndexRef.current;
+        const sliced = prev.slice(0, currentIdx + 1);
+        const nextHistory = [...sliced, JSON.parse(JSON.stringify(updated))];
+        historyIndexRef.current = nextHistory.length - 1;
+        setHistoryIndex(nextHistory.length - 1);
+        return nextHistory;
+      });
     }
-  }, [currentTree, updateTree, selectedMemberId]);
+
+    setTrees((prev) => {
+      const updatedTrees = prev.map((t) => (t.id === updated.id ? updated : t));
+      treesRef.current = updatedTrees;
+      saveTrees(updatedTrees);
+      return updatedTrees;
+    });
+  }, []);
+
+  const addMemberWithRelationships = useCallback(
+    (
+      member: Omit<Person, "id">,
+      relationships: RelationshipInput[] = []
+    ): Person => {
+      const tree = currentTreeRef.current;
+      if (!tree) throw new Error("No tree selected");
+
+      const newMemberId = generateId();
+      const newMember: Person = { ...member, id: newMemberId };
+
+      const existingRels = tree.relationships;
+      const createdRels: Relationship[] = [];
+
+      for (const rel of relationships) {
+        const personAId =
+          !rel.personAId || rel.personAId === "$NEW_MEMBER"
+            ? newMemberId
+            : rel.personAId;
+        const personBId =
+          !rel.personBId || rel.personBId === "$NEW_MEMBER"
+            ? newMemberId
+            : rel.personBId;
+
+        // Skip self-relationship
+        if (personAId === personBId) continue;
+
+        // Check duplicate
+        const isDuplicate =
+          existingRels.some((ex) => {
+            if (ex.type !== rel.type) return false;
+            if (rel.type === "spouse" || rel.type === "sibling") {
+              return (
+                (ex.personAId === personAId && ex.personBId === personBId) ||
+                (ex.personAId === personBId && ex.personBId === personAId)
+              );
+            }
+            return ex.personAId === personAId && ex.personBId === personBId;
+          }) ||
+          createdRels.some((cr) => {
+            if (cr.type !== rel.type) return false;
+            if (rel.type === "spouse" || rel.type === "sibling") {
+              return (
+                (cr.personAId === personAId && cr.personBId === personBId) ||
+                (cr.personAId === personBId && cr.personBId === personAId)
+              );
+            }
+            return cr.personAId === personAId && cr.personBId === personBId;
+          });
+
+        if (!isDuplicate) {
+          createdRels.push({
+            id: generateId(),
+            personAId,
+            personBId,
+            type: rel.type,
+          });
+        }
+      }
+
+      const updated: FamilyTree = {
+        ...tree,
+        members: [...tree.members, newMember],
+        relationships: [...tree.relationships, ...createdRels],
+      };
+
+      updateTree(updated);
+      return newMember;
+    },
+    [updateTree]
+  );
+
+  const addMember = useCallback(
+    (member: Omit<Person, "id">): Person => {
+      return addMemberWithRelationships(member, []);
+    },
+    [addMemberWithRelationships]
+  );
+
+  const updateMember = useCallback(
+    (member: Person) => {
+      const tree = currentTreeRef.current;
+      if (!tree) return;
+      const updated = {
+        ...tree,
+        members: tree.members.map((m) => (m.id === member.id ? member : m)),
+      };
+      updateTree(updated);
+    },
+    [updateTree]
+  );
+
+  const deleteMember = useCallback(
+    (id: string) => {
+      const tree = currentTreeRef.current;
+      if (!tree) return;
+      const updated = {
+        ...tree,
+        members: tree.members.filter((m) => m.id !== id),
+        relationships: tree.relationships.filter(
+          (r) => r.personAId !== id && r.personBId !== id
+        ),
+      };
+      updateTree(updated);
+      setSelectedMemberId((prev) => (prev === id ? null : prev));
+    },
+    [updateTree]
+  );
 
   const addRelationship = useCallback(
     (relationship: Omit<Relationship, "id">): Relationship => {
-      if (!currentTree) throw new Error("No tree selected");
+      const tree = currentTreeRef.current;
+      if (!tree) throw new Error("No tree selected");
+
+      // Check if relationship already exists
+      const existing = tree.relationships.find((ex) => {
+        if (ex.type !== relationship.type) return false;
+        if (relationship.type === "spouse" || relationship.type === "sibling") {
+          return (
+            (ex.personAId === relationship.personAId &&
+              ex.personBId === relationship.personBId) ||
+            (ex.personAId === relationship.personBId &&
+              ex.personBId === relationship.personAId)
+          );
+        }
+        return (
+          ex.personAId === relationship.personAId &&
+          ex.personBId === relationship.personBId
+        );
+      });
+
+      if (existing) {
+        return existing;
+      }
+
       const newRelationship: Relationship = {
         ...relationship,
         id: generateId(),
       };
       const updated = {
-        ...currentTree,
-        relationships: [...currentTree.relationships, newRelationship],
+        ...tree,
+        relationships: [...tree.relationships, newRelationship],
       };
       updateTree(updated);
       return newRelationship;
     },
-    [currentTree, updateTree]
+    [updateTree]
   );
 
-  const deleteRelationship = useCallback((id: string) => {
-    if (!currentTree) return;
-    const updated = {
-      ...currentTree,
-      relationships: currentTree.relationships.filter((r) => r.id !== id),
-    };
-    updateTree(updated);
-  }, [currentTree, updateTree]);
+  const deleteRelationship = useCallback(
+    (id: string) => {
+      const tree = currentTreeRef.current;
+      if (!tree) return;
+      const updated = {
+        ...tree,
+        relationships: tree.relationships.filter((r) => r.id !== id),
+      };
+      updateTree(updated);
+    },
+    [updateTree]
+  );
 
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const prevState = history[historyIndex - 1];
-      setHistoryIndex(historyIndex - 1);
-      setCurrentTreeState(prevState);
-      const updatedTrees = trees.map((t) =>
-        t.id === prevState.id ? prevState : t
-      );
-      updateTrees(updatedTrees);
+    const currentIdx = historyIndexRef.current;
+    if (currentIdx > 0) {
+      const nextIdx = currentIdx - 1;
+      historyIndexRef.current = nextIdx;
+      setHistoryIndex(nextIdx);
+
+      setHistory((prevHistory) => {
+        const prevState = prevHistory[nextIdx];
+        if (prevState) {
+          currentTreeRef.current = prevState;
+          setCurrentTreeState(prevState);
+          setTrees((prevTrees) => {
+            const nextTrees = prevTrees.map((t) =>
+              t.id === prevState.id ? prevState : t
+            );
+            treesRef.current = nextTrees;
+            saveTrees(nextTrees);
+            return nextTrees;
+          });
+        }
+        return prevHistory;
+      });
     }
-  }, [history, historyIndex, trees, updateTrees]);
+  }, []);
 
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1];
-      setHistoryIndex(historyIndex + 1);
-      setCurrentTreeState(nextState);
-      const updatedTrees = trees.map((t) =>
-        t.id === nextState.id ? nextState : t
-      );
-      updateTrees(updatedTrees);
-    }
-  }, [history, historyIndex, trees, updateTrees]);
+    const currentIdx = historyIndexRef.current;
+    setHistory((prevHistory) => {
+      if (currentIdx < prevHistory.length - 1) {
+        const nextIdx = currentIdx + 1;
+        historyIndexRef.current = nextIdx;
+        setHistoryIndex(nextIdx);
+
+        const nextState = prevHistory[nextIdx];
+        if (nextState) {
+          currentTreeRef.current = nextState;
+          setCurrentTreeState(nextState);
+          setTrees((prevTrees) => {
+            const nextTrees = prevTrees.map((t) =>
+              t.id === nextState.id ? nextState : t
+            );
+            treesRef.current = nextTrees;
+            saveTrees(nextTrees);
+            return nextTrees;
+          });
+        }
+      }
+      return prevHistory;
+    });
+  }, []);
 
   return (
     <FamilyTreeContext.Provider
@@ -209,6 +400,7 @@ export function FamilyTreeProvider({ children }: { children: ReactNode }) {
         deleteTree,
         updateTree,
         addMember,
+        addMemberWithRelationships,
         updateMember,
         deleteMember,
         addRelationship,

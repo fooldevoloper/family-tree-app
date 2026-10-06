@@ -1,9 +1,14 @@
 export interface Person {
   id: string;
   name: string;
+  maidenName?: string;
   gender: "male" | "female" | "other";
   dateOfBirth?: string;
+  placeOfBirth?: string;
+  isDeceased?: boolean;
   dateOfDeath?: string;
+  placeOfDeath?: string;
+  occupation?: string;
   photo?: string;
   notes?: string;
   x: number;

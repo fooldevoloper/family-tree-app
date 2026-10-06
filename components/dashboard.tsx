@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFamilyTree } from "@/lib/family-tree-context";
+import type { FamilyTree } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,18 +14,31 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, TreePine, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Plus, MoreVertical, TreePine, Calendar, Pencil, Trash2, FolderOpen } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 export function Dashboard() {
-  const { trees, createTree, deleteTree, setCurrentTree } = useFamilyTree();
+  const { trees, createTree, deleteTree, updateTree, setCurrentTree } = useFamilyTree();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTreeName, setNewTreeName] = useState("");
+  const [editingTree, setEditingTree] = useState<FamilyTree | null>(null);
+  const [editTreeName, setEditTreeName] = useState("");
+  const [deletingTree, setDeletingTree] = useState<FamilyTree | null>(null);
 
   const handleCreate = () => {
     if (newTreeName.trim()) {
@@ -32,6 +46,29 @@ export function Dashboard() {
       setCurrentTree(tree);
       setNewTreeName("");
       setIsCreateOpen(false);
+    }
+  };
+
+  const handleStartRename = (tree: FamilyTree) => {
+    setEditingTree(tree);
+    setEditTreeName(tree.name);
+  };
+
+  const handleSaveRename = () => {
+    if (editingTree && editTreeName.trim()) {
+      updateTree({
+        ...editingTree,
+        name: editTreeName.trim(),
+      });
+      setEditingTree(null);
+      setEditTreeName("");
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (deletingTree) {
+      deleteTree(deletingTree.id);
+      setDeletingTree(null);
     }
   };
 
@@ -117,14 +154,23 @@ export function Dashboard() {
                             setCurrentTree(tree);
                           }}
                         >
+                          <FolderOpen className="w-4 h-4 mr-2" />
+                          Open
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartRename(tree);
+                          }}
+                        >
                           <Pencil className="w-4 h-4 mr-2" />
-                          Edit
+                          Rename
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteTree(tree.id);
+                            setDeletingTree(tree);
                           }}
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
@@ -148,6 +194,7 @@ export function Dashboard() {
         )}
       </main>
 
+      {/* Create Tree Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent>
           <DialogHeader>
@@ -172,6 +219,53 @@ export function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rename Tree Dialog */}
+      <Dialog open={!!editingTree} onOpenChange={(open) => !open && setEditingTree(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Family Tree</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="Enter tree name..."
+              value={editTreeName}
+              onChange={(e) => setEditTreeName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveRename()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTree(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRename} disabled={!editTreeName.trim()}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Alert Dialog */}
+      <AlertDialog open={!!deletingTree} onOpenChange={(open) => !open && setDeletingTree(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Family Tree</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{deletingTree?.name}&rdquo;? This will permanently remove the tree, all its members, and relationships. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingTree(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmDelete}
+            >
+              Delete Tree
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFamilyTree } from "@/lib/family-tree-context";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -35,11 +36,16 @@ export function AddRelationshipModal({
   const [relationshipType, setRelationshipType] = useState<
     "parent-child" | "spouse" | "sibling"
   >("parent-child");
+  const [error, setError] = useState<string | null>(null);
 
   const members = currentTree?.members || [];
 
   const handleSubmit = () => {
-    if (!personAId || !personBId || personAId === personBId) return;
+    setError(null);
+    if (!personAId || !personBId || personAId === personBId) {
+      setError("Please select two different family members.");
+      return;
+    }
 
     // Check if relationship already exists
     const exists = currentTree?.relationships.some(
@@ -49,7 +55,7 @@ export function AddRelationshipModal({
     );
 
     if (exists) {
-      alert("This relationship already exists");
+      setError("This relationship connection already exists.");
       return;
     }
 
@@ -59,9 +65,12 @@ export function AddRelationshipModal({
       type: relationshipType,
     });
 
+    toast.success("Relationship connection created");
+
     // Reset and close
     setPersonAId("");
     setPersonBId("");
+    setError(null);
     setRelationshipType("parent-child");
     onOpenChange(false);
   };
@@ -69,6 +78,7 @@ export function AddRelationshipModal({
   const handleClose = () => {
     setPersonAId("");
     setPersonBId("");
+    setError(null);
     setRelationshipType("parent-child");
     onOpenChange(false);
   };
@@ -156,7 +166,13 @@ export function AddRelationshipModal({
               </Select>
             </div>
 
-            {personAId && personBId && (
+            {error && (
+              <div className="p-2.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium text-center">
+                {error}
+              </div>
+            )}
+
+            {personAId && personBId && !error && (
               <div className="p-3 rounded-lg bg-muted/50 text-sm text-center">
                 <span className="font-medium">
                   {members.find((m) => m.id === personAId)?.name}

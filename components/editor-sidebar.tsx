@@ -1,6 +1,7 @@
 "use client";
 
 import { useFamilyTree } from "@/lib/family-tree-context";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -10,16 +11,19 @@ import {
   Upload,
   Undo2,
   Redo2,
+  Sparkles,
 } from "lucide-react";
 
 interface EditorSidebarProps {
   onAddPerson: () => void;
   onAddRelationship: () => void;
+  onAutoArrange?: () => void;
 }
 
 export function EditorSidebar({
   onAddPerson,
   onAddRelationship,
+  onAutoArrange,
 }: EditorSidebarProps) {
   const { currentTree, undo, redo, canUndo, canRedo, updateTree } = useFamilyTree();
 
@@ -35,6 +39,7 @@ export function EditorSidebar({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    toast.success("Family tree exported");
   };
 
   const handleImport = () => {
@@ -53,9 +58,13 @@ export function EditorSidebar({
             members: data.members,
             relationships: data.relationships,
           });
+          toast.success("Family tree imported successfully");
+        } else {
+          toast.error("JSON file is missing members or relationships");
         }
       } catch (error) {
         console.error("Failed to import tree:", error);
+        toast.error("Failed to parse JSON file");
       }
     };
     input.click();
@@ -88,6 +97,25 @@ export function EditorSidebar({
       </div>
 
       <Separator />
+
+      {onAutoArrange && (
+        <>
+          <div className="my-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              Layout
+            </p>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 bg-transparent text-xs hover:border-primary/50"
+              onClick={onAutoArrange}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              Auto-Arrange Tree
+            </Button>
+          </div>
+          <Separator />
+        </>
+      )}
 
       <div className="mt-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
