@@ -131,7 +131,7 @@ export function AddPersonModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto w-[95vw] sm:w-full p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Add Family Member</DialogTitle>
         </DialogHeader>
@@ -202,7 +202,7 @@ export function AddPersonModal({
           </div>
 
           {/* Name & Maiden Name */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="name">Name *</Label>
               <Input
@@ -229,7 +229,7 @@ export function AddPersonModal({
           </div>
 
           {/* Gender & Occupation */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="gender">Gender</Label>
               <Select
@@ -262,7 +262,7 @@ export function AddPersonModal({
           </div>
 
           {/* Birth details */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="dob">Date of Birth</Label>
               <Input
@@ -308,7 +308,7 @@ export function AddPersonModal({
             </div>
 
             {formData.isDeceased && (
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border">
                 <div className="grid gap-1.5">
                   <Label htmlFor="dod">Date of Death</Label>
                   <Input

@@ -96,7 +96,7 @@ export function AddRelationshipModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto w-[95vw] sm:w-full p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Add Relationship</DialogTitle>
           <DialogDescription>

@@ -42,6 +42,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       selectedMemberId,
       setSelectedMemberId,
     } = useFamilyTree();
+
     const canvasRef = useRef<HTMLDivElement>(null);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [isPanning, setIsPanning] = useState(false);
@@ -61,6 +62,44 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       y: number;
     } | null>(null);
 
+    // Keep active state refs for non-passive touch listeners
+    const offsetRef = useRef(offset);
+    offsetRef.current = offset;
+
+    const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
+
+    const currentTreeRef = useRef(currentTree);
+    currentTreeRef.current = currentTree;
+
+    const draggedPosRef = useRef(draggedPos);
+    draggedPosRef.current = draggedPos;
+
+    // Unified touch gesture state
+    const touchState = useRef<{
+      mode: "none" | "pan" | "pinch" | "node-drag";
+      startX: number;
+      startY: number;
+      panStartOffset: { x: number; y: number };
+      pinchStartDist: number;
+      pinchStartZoom: number;
+      pinchStartOffset: { x: number; y: number };
+      nodeId: string | null;
+      nodeInitialPos: { x: number; y: number };
+      hasMoved: boolean;
+    }>({
+      mode: "none",
+      startX: 0,
+      startY: 0,
+      panStartOffset: { x: 0, y: 0 },
+      pinchStartDist: 0,
+      pinchStartZoom: 1,
+      pinchStartOffset: { x: 0, y: 0 },
+      nodeId: null,
+      nodeInitialPos: { x: 0, y: 0 },
+      hasMoved: false,
+    });
+
     const fitToScreen = useCallback(() => {
       if (
         !canvasRef.current ||
@@ -72,7 +111,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
         return;
       }
 
-      const PADDING = 80;
+      const PADDING = 60;
 
       let minX = Infinity;
       let minY = Infinity;
@@ -97,7 +136,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       const targetZoomX = (containerWidth - PADDING * 2) / boundsWidth;
       const targetZoomY = (containerHeight - PADDING * 2) / boundsHeight;
       const calculatedZoom = Math.min(
-        Math.max(Math.min(targetZoomX, targetZoomY), 0.4),
+        Math.max(Math.min(targetZoomX, targetZoomY), 0.35),
         1.5
       );
       const newZoom = Number(calculatedZoom.toFixed(2));
@@ -165,6 +204,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       [fitToScreen, resetView, centerOnMember, autoArrange]
     );
 
+    // Desktop Mouse Drag / Pan Handlers
     const handleMouseDown = useCallback(
       (e: React.MouseEvent) => {
         if (e.button === 0 && !draggingMemberId) {
@@ -238,6 +278,30 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       [currentTree]
     );
 
+    // Mobile Touch Drag on Node
+    const handleNodeTouchStart = useCallback(
+      (memberId: string, e: React.TouchEvent) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        const member = currentTree?.members.find((m) => m.id === memberId);
+        if (!member) return;
+
+        touchState.current = {
+          mode: "node-drag",
+          startX: touch.clientX,
+          startY: touch.clientY,
+          panStartOffset: { ...offsetRef.current },
+          pinchStartDist: 0,
+          pinchStartZoom: zoomRef.current,
+          pinchStartOffset: { ...offsetRef.current },
+          nodeId: memberId,
+          nodeInitialPos: { x: member.x, y: member.y },
+          hasMoved: false,
+        };
+      },
+      [currentTree]
+    );
+
     const handleCanvasClick = useCallback(
       (e: React.MouseEvent) => {
         if (
@@ -287,6 +351,157 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       return () => canvasEl.removeEventListener("wheel", handleWheel);
     }, [onZoomChange]);
 
+    // Native Mobile Touch Gestures (Single-finger pan, 2-finger pinch-to-zoom, node drag)
+    useEffect(() => {
+      const canvasEl = canvasRef.current;
+      if (!canvasEl) return;
+
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          // 2 fingers = pinch zoom mode
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dist = Math.hypot(
+            t1.clientX - t2.clientX,
+            t1.clientY - t2.clientY
+          );
+
+          touchState.current.mode = "pinch";
+          touchState.current.pinchStartDist = dist;
+          touchState.current.pinchStartZoom = zoomRef.current;
+          touchState.current.pinchStartOffset = { ...offsetRef.current };
+          setDraggingMemberId(null);
+          setDraggedPos(null);
+        } else if (e.touches.length === 1) {
+          const t = e.touches[0];
+          if (touchState.current.mode !== "node-drag") {
+            touchState.current.mode = "pan";
+            touchState.current.startX = t.clientX;
+            touchState.current.startY = t.clientY;
+            touchState.current.panStartOffset = { ...offsetRef.current };
+          }
+        }
+      };
+
+      const onTouchMove = (e: TouchEvent) => {
+        // Prevent mobile browser page bounce/pull-to-refresh
+        e.preventDefault();
+
+        const state = touchState.current;
+
+        if (state.mode === "pinch" && e.touches.length === 2) {
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dist = Math.hypot(
+            t1.clientX - t2.clientX,
+            t1.clientY - t2.clientY
+          );
+
+          if (state.pinchStartDist > 0) {
+            const scale = dist / state.pinchStartDist;
+            const newZoom = Math.min(
+              Math.max(state.pinchStartZoom * scale, 0.35),
+              2
+            );
+            const midX = (t1.clientX + t2.clientX) / 2;
+            const midY = (t1.clientY + t2.clientY) / 2;
+
+            // Anchor focal point under fingers
+            const newOffsetX =
+              midX -
+              (midX - state.pinchStartOffset.x) *
+                (newZoom / state.pinchStartZoom);
+            const newOffsetY =
+              midY -
+              (midY - state.pinchStartOffset.y) *
+                (newZoom / state.pinchStartZoom);
+
+            setOffset({
+              x: Math.round(newOffsetX),
+              y: Math.round(newOffsetY),
+            });
+            onZoomChange?.(Number(newZoom.toFixed(2)));
+          }
+        } else if (state.mode === "pan" && e.touches.length === 1) {
+          const t = e.touches[0];
+          const deltaX = t.clientX - state.startX;
+          const deltaY = t.clientY - state.startY;
+
+          setOffset({
+            x: Math.round(state.panStartOffset.x + deltaX),
+            y: Math.round(state.panStartOffset.y + deltaY),
+          });
+        } else if (state.mode === "node-drag" && e.touches.length === 1) {
+          const t = e.touches[0];
+          const rawDist = Math.hypot(
+            t.clientX - state.startX,
+            t.clientY - state.startY
+          );
+
+          if (rawDist > 6 || state.hasMoved) {
+            state.hasMoved = true;
+            const currentZ = zoomRef.current;
+            const deltaX = (t.clientX - state.startX) / currentZ;
+            const deltaY = (t.clientY - state.startY) / currentZ;
+
+            setDraggingMemberId(state.nodeId);
+            setDraggedPos({
+              id: state.nodeId!,
+              x: Math.round(state.nodeInitialPos.x + deltaX),
+              y: Math.round(state.nodeInitialPos.y + deltaY),
+            });
+          }
+        }
+      };
+
+      const onTouchEnd = (e: TouchEvent) => {
+        const state = touchState.current;
+
+        if (state.mode === "node-drag") {
+          if (state.hasMoved && draggedPosRef.current && currentTreeRef.current) {
+            const member = currentTreeRef.current.members.find(
+              (m) => m.id === state.nodeId
+            );
+            if (member) {
+              updateMember({
+                ...member,
+                x: draggedPosRef.current.x,
+                y: draggedPosRef.current.y,
+              });
+            }
+          } else if (!state.hasMoved && state.nodeId) {
+            // Simple tap on card
+            setSelectedMemberId(state.nodeId);
+          }
+          setDraggingMemberId(null);
+          setDraggedPos(null);
+        }
+
+        if (e.touches.length === 0) {
+          state.mode = "none";
+        } else if (e.touches.length === 1) {
+          state.mode = "pan";
+          state.startX = e.touches[0].clientX;
+          state.startY = e.touches[0].clientY;
+          state.panStartOffset = { ...offsetRef.current };
+        }
+      };
+
+      canvasEl.addEventListener("touchstart", onTouchStart, {
+        passive: false,
+      });
+      canvasEl.addEventListener("touchmove", onTouchMove, { passive: false });
+      canvasEl.addEventListener("touchend", onTouchEnd, { passive: false });
+      canvasEl.addEventListener("touchcancel", onTouchEnd, { passive: false });
+
+      return () => {
+        canvasEl.removeEventListener("touchstart", onTouchStart);
+        canvasEl.removeEventListener("touchmove", onTouchMove);
+        canvasEl.removeEventListener("touchend", onTouchEnd);
+        canvasEl.removeEventListener("touchcancel", onTouchEnd);
+      };
+    }, [updateMember, setSelectedMemberId, onZoomChange]);
+
     // Effective members with real-time drag position
     const effectiveMembers = useMemo(() => {
       if (!currentTree) return [];
@@ -314,7 +529,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
       <div
         ref={canvasRef}
         className={cn(
-          "w-full h-full overflow-hidden bg-muted/20 relative select-none",
+          "w-full h-full overflow-hidden bg-muted/20 relative select-none touch-none",
           isPanning && !draggingMemberId ? "cursor-grabbing" : "cursor-grab"
         )}
         onMouseDown={handleMouseDown}
@@ -323,6 +538,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
         onMouseLeave={handleMouseUp}
         onClick={handleCanvasClick}
         data-canvas="true"
+        style={{ touchAction: "none" }}
       >
         {/* Subtle grid pattern */}
         <div
@@ -335,12 +551,13 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
           data-canvas="true"
         />
 
-        {/* Canvas content */}
+        {/* Canvas content with hardware acceleration */}
         <div
           className="absolute"
           style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${zoom})`,
             transformOrigin: "0 0",
+            willChange: "transform",
           }}
           data-canvas="true"
         >
@@ -362,6 +579,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
               key={member.id}
               member={member}
               onDragStart={handleNodeDragStart}
+              onTouchStart={handleNodeTouchStart}
               isHighlighted={
                 highlightedMemberIds === null ||
                 highlightedMemberIds.has(member.id)
@@ -376,8 +594,8 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
           {/* Empty state indicator */}
           {currentTree.members.length === 0 && (
             <div
-              className="absolute flex flex-col items-center justify-center text-center p-8 rounded-3xl bg-card/60 border border-border/60 shadow-lg backdrop-blur-md"
-              style={{ left: "300px", top: "200px", width: "360px" }}
+              className="absolute flex flex-col items-center justify-center text-center p-6 sm:p-8 rounded-3xl bg-card/60 border border-border/60 shadow-lg backdrop-blur-md"
+              style={{ left: "100px", top: "150px", maxWidth: "340px" }}
               data-canvas="true"
             >
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-3">
@@ -387,7 +605,7 @@ export const TreeCanvas = forwardRef<TreeCanvasRef, TreeCanvasProps>(
                 Your tree is empty
               </p>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Add your first family member from the sidebar or click &ldquo;Add Member&rdquo; to begin mapping your lineage.
+                Add your first family member to begin mapping your lineage.
               </p>
             </div>
           )}

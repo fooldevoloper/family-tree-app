@@ -142,7 +142,7 @@ export function Dashboard() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </Button>

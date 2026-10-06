@@ -43,6 +43,13 @@ import {
   MapPin,
 } from "lucide-react";
 import { AddParentModal } from "./modals/add-parent-modal";
+import { useIsMobile } from "@/components/ui/use-mobile";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 
 export function MemberDrawer() {
   const {
@@ -377,11 +384,15 @@ export function MemberDrawer() {
     toast.success(`Deleted ${member.name}`);
   };
 
-  return (
-    <aside className="w-80 border-l border-border bg-card flex flex-col shrink-0 overflow-hidden">
+  const isMobile = useIsMobile();
+
+  const drawerContent = (
+    <>
       {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-semibold text-foreground">Member Profile</h2>
+      <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
+        <h2 className="font-semibold text-foreground">
+          {isEditing ? "Edit Profile" : "Member Profile"}
+        </h2>
         <Button
           variant="ghost"
           size="icon"
@@ -807,7 +818,7 @@ export function MemberDrawer() {
 
       {/* Footer Actions */}
       {!isEditing && (
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border shrink-0 bg-card">
           <Button
             variant="outline"
             className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 bg-transparent text-xs"
@@ -818,7 +829,11 @@ export function MemberDrawer() {
           </Button>
         </div>
       )}
+    </>
+  );
 
+  const modals = (
+    <>
       {/* Delete Member Confirmation */}
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
@@ -848,6 +863,33 @@ export function MemberDrawer() {
         onOpenChange={setIsAddParentOpen}
         childMemberId={member.id}
       />
-    </aside>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <Drawer
+          open={Boolean(selectedMemberId)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedMemberId(null);
+          }}
+        >
+          <DrawerContent className="max-h-[85vh] flex flex-col p-0">
+            {drawerContent}
+          </DrawerContent>
+        </Drawer>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <aside className="w-80 border-l border-border bg-card flex flex-col shrink-0 overflow-hidden">
+        {drawerContent}
+      </aside>
+      {modals}
+    </>
   );
 }

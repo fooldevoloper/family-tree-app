@@ -19,7 +19,7 @@ interface FamilyTreeGraphLinesProps {
  * draws horizontal marriage bridges between couples, and connects cleanly
  * to card perimeter anchor points (top-center for children, bottom-center for parents).
  */
-export function FamilyTreeGraphLines({
+export const FamilyTreeGraphLines = React.memo(function FamilyTreeGraphLines({
   relationships,
   members,
   selectedMemberId,
@@ -408,7 +408,7 @@ export function FamilyTreeGraphLines({
       })}
     </g>
   );
-}
+});
 
 // Backward-compatible individual line component
 export function RelationshipLine({

@@ -1,21 +1,22 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { useFamilyTree } from "@/lib/family-tree-context";
 import type { Person } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { User, Calendar, Briefcase, Plus } from "lucide-react";
 
 interface PersonNodeProps {
   member: Person;
   onDragStart: (memberId: string, e: React.MouseEvent) => void;
+  onTouchStart?: (memberId: string, e: React.TouchEvent) => void;
   isHighlighted: boolean;
   isDimmed: boolean;
 }
 
-export function PersonNode({
+export const PersonNode = memo(function PersonNode({
   member,
   onDragStart,
+  onTouchStart,
   isHighlighted,
   isDimmed,
 }: PersonNodeProps) {
@@ -32,7 +33,6 @@ export function PersonNode({
     if (!date) return null;
     const d = new Date(date);
     if (isNaN(d.getTime())) return date;
-    // Just year or short date
     return d.toLocaleDateString("en-US", { year: "numeric" });
   };
 
@@ -40,7 +40,7 @@ export function PersonNode({
     switch (member.gender) {
       case "male":
         return {
-          borderAccent: "border-sky-500/40 hover:border-sky-500/80",
+          borderAccent: "border-sky-500/40 hover:border-sky-500/80 active:border-sky-600",
           topBar: "bg-sky-500",
           badgeBg: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
           avatarGradient: "from-sky-500/20 to-blue-600/30 text-sky-600 dark:text-sky-300",
@@ -49,7 +49,7 @@ export function PersonNode({
         };
       case "female":
         return {
-          borderAccent: "border-rose-500/40 hover:border-rose-500/80",
+          borderAccent: "border-rose-500/40 hover:border-rose-500/80 active:border-rose-600",
           topBar: "bg-rose-500",
           badgeBg: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
           avatarGradient: "from-rose-500/20 to-pink-600/30 text-rose-600 dark:text-rose-300",
@@ -58,7 +58,7 @@ export function PersonNode({
         };
       default:
         return {
-          borderAccent: "border-purple-500/40 hover:border-purple-500/80",
+          borderAccent: "border-purple-500/40 hover:border-purple-500/80 active:border-purple-600",
           topBar: "bg-purple-500",
           badgeBg: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
           avatarGradient: "from-purple-500/20 to-indigo-600/30 text-purple-600 dark:text-purple-300",
@@ -75,12 +75,12 @@ export function PersonNode({
   return (
     <div
       className={cn(
-        "absolute cursor-grab active:cursor-grabbing select-none group",
-        "w-48 rounded-2xl border bg-card/95 backdrop-blur-md shadow-sm transition-all duration-200",
+        "absolute cursor-grab active:cursor-grabbing select-none group touch-none",
+        "w-48 rounded-2xl border bg-card/95 backdrop-blur-md shadow-sm transition-all duration-150",
         g.borderAccent,
         isSelected
-          ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-[1.02] border-primary"
-          : "hover:shadow-md hover:-translate-y-0.5",
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-[1.02] border-primary z-20"
+          : "hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]",
         isDimmed && "opacity-35 grayscale-[20%]"
       )}
       style={{
@@ -88,8 +88,10 @@ export function PersonNode({
         top: member.y,
         width: 192,
         minHeight: 84,
+        touchAction: "none",
       }}
       onMouseDown={(e) => onDragStart(member.id, e)}
+      onTouchStart={(e) => onTouchStart?.(member.id, e)}
       onClick={(e) => {
         e.stopPropagation();
         setSelectedMemberId(member.id);
@@ -135,7 +137,10 @@ export function PersonNode({
           {/* Details */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
-              <h4 className="font-semibold text-foreground text-xs leading-tight truncate" title={member.name}>
+              <h4
+                className="font-semibold text-foreground text-xs leading-tight truncate"
+                title={member.name}
+              >
                 {member.name}
               </h4>
               <span
@@ -155,11 +160,15 @@ export function PersonNode({
             )}
 
             {/* Dates */}
-            {(birthYear || deathYear || member.isDeceased) ? (
+            {birthYear || deathYear || member.isDeceased ? (
               <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
                 <span>
                   {birthYear || "?"}
-                  {deathYear ? ` – ${deathYear}` : member.isDeceased ? " – ✝" : ""}
+                  {deathYear
+                    ? ` – ${deathYear}`
+                    : member.isDeceased
+                    ? " – ✝"
+                    : ""}
                 </span>
               </p>
             ) : null}
@@ -177,4 +186,4 @@ export function PersonNode({
       <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-border border border-background opacity-0 group-hover:opacity-100 transition-opacity" />
     </div>
   );
-}
+});

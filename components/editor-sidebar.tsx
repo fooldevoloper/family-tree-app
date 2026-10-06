@@ -14,18 +14,39 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 interface EditorSidebarProps {
   onAddPerson: () => void;
   onAddRelationship: () => void;
   onAutoArrange?: () => void;
+  onClose?: () => void;
+  className?: string;
 }
 
 export function EditorSidebar({
   onAddPerson,
   onAddRelationship,
   onAutoArrange,
+  onClose,
+  className,
 }: EditorSidebarProps) {
   const { currentTree, undo, redo, canUndo, canRedo, updateTree } = useFamilyTree();
+
+  const handleAddPerson = () => {
+    onAddPerson();
+    onClose?.();
+  };
+
+  const handleAddRelationship = () => {
+    onAddRelationship();
+    onClose?.();
+  };
+
+  const handleAutoArrange = () => {
+    onAutoArrange?.();
+    onClose?.();
+  };
 
   const handleExport = () => {
     if (!currentTree) return;
@@ -71,7 +92,12 @@ export function EditorSidebar({
   };
 
   return (
-    <aside className="w-56 border-r border-border bg-sidebar p-4 flex flex-col gap-2 shrink-0">
+    <aside
+      className={cn(
+        "w-56 border-r border-border bg-sidebar p-4 flex flex-col gap-2 shrink-0",
+        className
+      )}
+    >
       <div className="mb-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Add
@@ -80,7 +106,7 @@ export function EditorSidebar({
           <Button
             variant="ghost"
             className="w-full justify-start gap-2"
-            onClick={onAddPerson}
+            onClick={handleAddPerson}
           >
             <UserPlus className="w-4 h-4" />
             Add Member
@@ -88,7 +114,7 @@ export function EditorSidebar({
           <Button
             variant="ghost"
             className="w-full justify-start gap-2"
-            onClick={onAddRelationship}
+            onClick={handleAddRelationship}
           >
             <Link2 className="w-4 h-4" />
             Add Relationship
@@ -107,7 +133,7 @@ export function EditorSidebar({
             <Button
               variant="outline"
               className="w-full justify-start gap-2 bg-transparent text-xs hover:border-primary/50"
-              onClick={onAutoArrange}
+              onClick={handleAutoArrange}
             >
               <Sparkles className="w-3.5 h-3.5 text-primary" />
               Auto-Arrange Tree
